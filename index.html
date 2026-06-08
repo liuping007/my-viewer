@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>站点数据查看</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 1200px; margin: 20px auto; padding: 0 15px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 14px; }
+    th { background-color: #f2f2f2; }
+    .login-box { max-width: 350px; margin: 60px auto; padding: 25px; border: 1px solid #ccc; border-radius: 8px; }
+    .login-box input { width: 100%; padding: 10px; margin: 8px 0; box-sizing: border-box; }
+    .login-box button { width: 100%; padding: 10px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    .logout-btn { background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-bottom: 10px; }
+    .summary { background: #e9f7ef; padding: 12px; border-radius: 6px; margin-bottom: 15px; font-weight: bold; }
+    .error { color: red; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script>
+    // ========== 配置 ==========
+    const SUPABASE_URL = "https://gbedtcwsnwteneiokizp.supabase.co";
+    const SUPABASE_ANON_KEY = "sb_publishable_6kqvIXFMeqXW-xmwh7GcHQ_LvfH2zon";
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // ========== 所有界面文字（不会乱码） ==========
+    const T = {
+      loginTitle: '登录查看数据',
+      emailPlaceholder: '邮箱',
+      passwordPlaceholder: '密码',
+      loginBtn: '登录',
+      logoutBtn: '退出登录',
+      summaryLoading: '加载中...',
+      summaryPrefix: '累计评论：',
+      noData: '暂无数据',
+      loadErrorPrefix: '加载失败：',
+      tableHeaders: ['站点编码','站点简称','销售单号','油品名称','手机号','姓名','CTC','TTC','评价内容','提交时间'],
+      siteSummaryFail: '累计数据加载失败',
+      siteSummaryNone: '暂无'
+    };
+
+    function buildUI() {
+      const app = document.getElementById('app');
+      const loginSection = document.createElement('div');
+      loginSection.id = 'loginSection';
+      loginSection.style.display = 'none';
+      loginSection.innerHTML = `<div class="login-box"><h3>${T.loginTitle}</h3><input type="email" id="email" placeholder="${T.emailPlaceholder}" required><input type="password" id="password" placeholder="${T.passwordPlaceholder}" required><button id="loginBtn">${T.loginBtn}</button><p id="loginError" class="error"></p></div>`;
+      app.appendChild(loginSection);
+      const dataSection = document.createElement('div');
+      dataSection.id = 'dataSection';
+      dataSection.style.display = 'none';
+      dataSection.innerHTML = `<button id="logoutBtn" class="logout-btn">${T.logoutBtn}</button><div class="summary" id="summary">${T.summaryLoading}</div><table><thead id="tableHead"></thead><tbody id="tableBody"></tbody></table><p id="dataError" class="error"></p>`;
+      app.appendChild(dataSection);
+      const thead = document.getElementById('tableHead');
+      const tr = document.createElement('tr');
+      T.tableHeaders.forEach(h => { const th = document.createElement('th'); th.textContent = h; tr.appendChild(th); });
+      thead.appendChild(tr);
+    }
+
+    function showLogin() { document.getElementById('loginSection').style.display = 'block'; document.getElementById('dataSection').style.display = 'none'; }
+    function showData() { document.getElementById('loginSection').style.display = 'none'; document.getElementById('dataSection').style.display = 'block'; loadData(); loadSummary(); }
+
+    async function login() {
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const errorEl = document.getElementById('loginError');
+      errorEl.textContent = '';
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) { errorEl.textContent = T.loadErrorPrefix + error.message; return; }
+      showData();
+    }
+
+    async function logout() { await supabase.auth.signOut(); showLogin(); }
+
+    async function loadData() {
+      const { data, error } = await supabase.from('request_logs_view').select('*').order('提交时间', { ascending: false });
+      const tbody = document.getElementById('tableBody');
+      const errEl = document.getElementById('dataError');
+      tbody.innerHTML = ''; errEl.textContent = '';
+      if (error) { errEl.textContent = T.loadErrorPrefix + error.message; return; }
+      if (data.length === 0) { tbody.innerHTML = `<tr><td colspan="10">${T.noData}</td></tr>`; return; }
+      data.forEach(row => {
+        const tr = document.createElement('tr');
+        [row['站点编码'],row['站点简称'],row['销售单号'],row['油品名称'],row['手机号'],row['姓名'],row['CTC'],row['TTC'],row['评价内容'],row['提交时间']].forEach(val => { const td = document.createElement('td'); td.textContent = val || ''; tr.appendChild(td); });
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function loadSummary() {
+      try {
+        const { data, error } = await supabase.from('site_comment_summary').select('站点编码, 累计评论数');
+        if (error || !data) { document.getElementById('summary').textContent = T.siteSummaryFail; return; }
+        const items = data.map(d => `${d['站点编码']}: ${d['累计评论数']} 次`).join(' | ');
+        document.getElementById('summary').textContent = T.summaryPrefix + (items || T.siteSummaryNone);
+      } catch (e) { document.getElementById('summary').textContent = T.siteSummaryFail; }
+    }
+
+    buildUI();
+    document.getElementById('loginBtn').addEventListener('click', login);
+    document.getElementById('logoutBtn').addEventListener('click', logout);
+    (async () => { const { data: { session } } = await supabase.auth.getSession(); if (session) showData(); else showLogin(); })();
+  </script>
+</body>
+</html>
