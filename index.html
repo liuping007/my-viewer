@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>我的应用 - 管理面板</title>
+    <!-- Supabase JS SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+        }
+        body {
+            background: #f1f5f9;
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            width: 100%;
+            background: white;
+            border-radius: 28px;
+            box-shadow: 0 20px 35px -12px rgba(0,0,0,0.1);
+            overflow: hidden;
+            padding: 24px 28px;
+            transition: all 0.2s;
+        }
+        h1 {
+            font-size: 1.8rem;
+            font-weight: 600;
+            margin-top: 0;
+            margin-bottom: 0.25rem;
+            color: #0f172a;
+        }
+        .sub {
+            color: #475569;
+            margin-bottom: 2rem;
+            border-left: 4px solid #3b82f6;
+            padding-left: 12px;
+        }
+        .auth-panel, .admin-panel {
+            transition: 0.2s;
+        }
+        .card {
+            background: #f8fafc;
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 24px;
+            border: 1px solid #e2e8f0;
+        }
+        .form-group {
+            margin-bottom: 16px;
+        }
+        label {
+            display: block;
+            font-weight: 500;
+            margin-bottom: 6px;
+            color: #1e293b;
+        }
+        input, button {
+            border-radius: 40px;
+            padding: 12px 18px;
+            font-size: 1rem;
+            border: 1px solid #cbd5e1;
+            width: 100%;
+            transition: 0.2s;
+        }
+        input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59,130,246,0.2);
+        }
+        button {
+            background: #3b82f6;
+            color: white;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            margin-top: 8px;
+        }
+        button:hover {
+            background: #2563eb;
+            transform: scale(0.98);
+        }
+        .btn-outline {
+            background: white;
+            border: 1px solid #cbd5e1;
+            color: #1e293b;
+        }
+        .btn-outline:hover {
+            background: #f1f5f9;
+            transform: none;
+        }
+        .danger-btn {
+            background: #ef4444;
+        }
+        .danger-btn:hover {
+            background: #dc2626;
+        }
+        .user-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        .user-table th, .user-table td {
+            text-align: left;
+            padding: 14px 12px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .user-table th {
+            background: #f1f5f9;
+            font-weight: 600;
+            color: #0f172a;
+        }
+        .reset-btn {
+            background: #f59e0b;
+            padding: 6px 12px;
+            font-size: 0.8rem;
+            width: auto;
+            margin: 0;
+        }
+        .reset-btn:hover {
+            background: #d97706;
+        }
+        .status {
+            margin-top: 16px;
+            padding: 12px;
+            border-radius: 40px;
+            background: #eef2ff;
+            color: #1e40af;
+            font-size: 0.9rem;
+        }
+        .flex-between {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .admin-badge {
+            background: #3b82f6;
+            color: white;
+            border-radius: 40px;
+            padding: 4px 12px;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+        @media (max-width: 700px) {
+            .container { padding: 16px; }
+            .user-table th, .user-table td { padding: 8px; font-size: 0.8rem; }
+        }
+    </style>
+</head>
+<body>
+<div class="container" id="app">
+    <div class="flex-between">
+        <h1>🔐 我的管理平台</h1>
+        <div id="userInfo"></div>
+    </div>
+    <div class="sub">安全 · 高效 · 完全免费</div>
+
+    <!-- 未登录时显示登录/注册卡片 -->
+    <div id="authSection" class="auth-panel">
+        <div class="card">
+            <h3>登录 / 注册</h3>
+            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                <div style="flex:1">
+                    <input type="email" id="loginEmail" placeholder="邮箱" value="liuping@vip.com">
+                    <input type="password" id="loginPassword" placeholder="密码" style="margin-top: 12px;">
+                    <button id="loginBtn">登录</button>
+                </div>
+                <div style="flex:1">
+                    <input type="email" id="signupEmail" placeholder="新邮箱">
+                    <input type="password" id="signupPassword" placeholder="新密码 (至少6位)" style="margin-top: 12px;">
+                    <button id="signupBtn" class="btn-outline">注册新账号</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 管理员面板（登录后且是管理员才显示） -->
+    <div id="adminPanel" style="display: none;">
+        <div class="flex-between">
+            <h2>👥 用户管理</h2>
+            <button id="logoutBtn" class="btn-outline" style="width: auto; padding: 8px 20px;">登出</button>
+        </div>
+        <div class="card">
+            <div class="flex-between">
+                <strong>📋 全部用户列表</strong>
+                <button id="refreshUsersBtn" style="width: auto; padding: 6px 16px;">刷新列表</button>
+            </div>
+            <div id="usersListContainer">
+                <div class="status">加载中...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ======================== 请务必填写你的 Supabase 配置 ========================
+    const CONFIG = {
+        SUPABASE_URL: 'https://gbedtcwsnwteneiokizp.supabase.co',
+        // 从 Supabase 后台 Settings -> API -> Project API keys (anon public) 复制
+        SUPABASE_ANON_KEY: 'sb_publishable_6kqvIXFMeqXW-xmwh7GcHQ_LvfH2zon'   // ⚠️ 替换成你自己的 anon key
+    };
+    // 管理员邮箱（必须与 Edge Function 中 ADMIN_EMAIL 一致）
+    const ADMIN_EMAIL = 'liuping@vip.com';
+    // =========================================================================
+
+    const supabase = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+
+    // DOM 元素
+    const authSection = document.getElementById('authSection');
+    const adminPanel = document.getElementById('adminPanel');
+    const userInfoSpan = document.getElementById('userInfo');
+    const usersListContainer = document.getElementById('usersListContainer');
+    const refreshUsersBtn = document.getElementById('refreshUsersBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+
+    // 辅助函数：显示状态消息
+    function showStatus(container, message, isError = false) {
+        if (!container) return;
+        container.innerHTML = `<div class="status" style="background:${isError ? '#fee2e2' : '#eef2ff'}; color:${isError ? '#b91c1c' : '#1e40af'}">${message}</div>`;
+    }
+
+    // 获取当前会话用户
+    async function getCurrentUser() {
+        const { data: { user }, error } = await supabase.auth.getUser();
+        if (error || !user) return null;
+        return user;
+    }
+
+    // 更新UI：根据登录状态及管理员权限展示界面
+    async function updateUI() {
+        const user = await getCurrentUser();
+        if (!user) {
+            // 未登录
+            authSection.style.display = 'block';
+            adminPanel.style.display = 'none';
+            userInfoSpan.innerHTML = '';
+            return;
+        }
+        // 已登录
+        authSection.style.display = 'none';
+        const isAdmin = (user.email === ADMIN_EMAIL);
+        if (isAdmin) {
+            adminPanel.style.display = 'block';
+            userInfoSpan.innerHTML = `<span class="admin-badge">👑 管理员 ${user.email}</span>`;
+            await loadUsers();   // 自动加载用户列表
+        } else {
+            // 普通用户：无管理权限，显示简单提示
+            adminPanel.style.display = 'block';
+            adminPanel.innerHTML = `<div class="card"><h3>📢 普通用户</h3><p>您好 ${user.email}，您没有管理员权限。</p><button id="logoutBtnPlain" class="btn-outline">登出</button></div>`;
+            userInfoSpan.innerHTML = `<span>👤 ${user.email}</span>`;
+            const logoutPlain = document.getElementById('logoutBtnPlain');
+            if (logoutPlain) logoutPlain.onclick = () => supabase.auth.signOut().then(() => location.reload());
+        }
+    }
+
+    // 加载所有用户（调用 list-users Edge Function）
+    async function loadUsers() {
+        showStatus(usersListContainer, '⏳ 正在获取用户列表...');
+        try {
+            // 使用 supabase.functions.invoke 自动附带当前登录用户的 JWT
+            const { data, error } = await supabase.functions.invoke('list-users', {
+                method: 'POST'
+            });
+            if (error) throw new Error(error.message);
+            if (!data || !data.users) throw new Error('返回数据格式错误');
+            const users = data.users;
+            renderUsersTable(users);
+        } catch (err) {
+            console.error('loadUsers error:', err);
+            showStatus(usersListContainer, `❌ 获取失败: ${err.message}`, true);
+        }
+    }
+
+    // 渲染用户表格
+    function renderUsersTable(users) {
+        if (!users || users.length === 0) {
+            usersListContainer.innerHTML = `<div class="status">暂无其他用户</div>`;
+            return;
+        }
+        const table = document.createElement('table');
+        table.className = 'user-table';
+        table.innerHTML = `
+            <thead>
+                <tr><th>用户ID</th><th>邮箱</th><th>注册时间</th><th>操作</th></tr>
+            </thead>
+            <tbody id="userTableBody"></tbody>
+        `;
+        const tbody = table.querySelector('#userTableBody');
+        users.forEach(user => {
+            const row = document.createElement('tr');
+            const createdAt = user.created_at ? new Date(user.created_at).toLocaleString() : '未知';
+            row.innerHTML = `
+                <td style="font-family:monospace; font-size:0.75rem;">${user.id}</td>
+                <td>${escapeHtml(user.email)}</td>
+                <td>${createdAt}</td>
+                <td><button class="reset-btn" data-userid="${user.id}" data-email="${escapeHtml(user.email)}">重置密码</button></td>
+            `;
+            tbody.appendChild(row);
+        });
+        usersListContainer.innerHTML = '';
+        usersListContainer.appendChild(table);
+
+        // 绑定重置密码按钮事件
+        document.querySelectorAll('.reset-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const userId = btn.getAttribute('data-userid');
+                const userEmail = btn.getAttribute('data-email');
+                const newPassword = prompt(`请输入用户 ${userEmail} 的新密码 (至少6位):`);
+                if (!newPassword || newPassword.length < 6) {
+                    alert('密码无效，必须至少6位');
+                    return;
+                }
+                await resetUserPassword(userId, newPassword);
+            });
+        });
+    }
+
+    // 重置密码函数 (调用 reset-user-password)
+    async function resetUserPassword(userId, newPassword) {
+        try {
+            const { data, error } = await supabase.functions.invoke('reset-user-password', {
+                method: 'POST',
+                body: { userId, newPassword }
+            });
+            if (error) throw new Error(error.message);
+            if (data && data.success) {
+                alert(`✅ 密码重置成功！用户新密码为: ${newPassword}`);
+            } else {
+                throw new Error(data?.error || '未知错误');
+            }
+        } catch (err) {
+            console.error('重置密码失败:', err);
+            alert(`❌ 重置失败: ${err.message}`);
+        }
+    }
+
+    // 简单的防XSS
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+
+    // 登录逻辑
+    document.getElementById('loginBtn').addEventListener('click', async () => {
+        const email = document.getElementById('loginEmail').value.trim();
+        const password = document.getElementById('loginPassword').value;
+        if (!email || !password) {
+            alert('请填写邮箱和密码');
+            return;
+        }
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) {
+            alert('登录失败: ' + error.message);
+        } else {
+            await updateUI();
+        }
+    });
+
+    // 注册逻辑
+    document.getElementById('signupBtn').addEventListener('click', async () => {
+        const email = document.getElementById('signupEmail').value.trim();
+        const password = document.getElementById('signupPassword').value;
+        if (!email || !password || password.length < 6) {
+            alert('邮箱和密码（至少6位）都必须填写');
+            return;
+        }
+        const { error } = await supabase.auth.signUp({ email, password });
+        if (error) {
+            alert('注册失败: ' + error.message);
+        } else {
+            alert('注册成功！请使用刚才的账号登录。');
+            document.getElementById('signupEmail').value = '';
+            document.getElementById('signupPassword').value = '';
+        }
+    });
+
+    // 刷新用户列表
+    if (refreshUsersBtn) refreshUsersBtn.addEventListener('click', loadUsers);
+    // 登出
+    if (logoutBtn) logoutBtn.addEventListener('click', async () => {
+        await supabase.auth.signOut();
+        location.reload();
+    });
+
+    // 页面初始化：检查登录状态并更新UI
+    supabase.auth.onAuthStateChange(() => {
+        updateUI();
+    });
+    updateUI();
+</script>
+</body>
+</html>
