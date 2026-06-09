@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>站点数据监控中心</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --neon-blue: #00f3ff;
+    --neon-purple: #b300ff;
+    --dark-bg: #0a0a0f;
+    --panel-bg: rgba(10, 15, 25, 0.85);
+    --border-glow: 0 0 10px rgba(0, 243, 255, 0.3);
+    --text-primary: #e0f7fa;
+    --text-secondary: #80deea;
+    --accent: #00e5ff;
+    --danger: #ff1744;
+    --success: #00e676;
+    --glass: rgba(255, 255, 255, 0.06);
+    --glass-border: rgba(255, 255, 255, 0.12);
+    --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', '微软雅黑', sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: radial-gradient(ellipse at bottom, #1b2735 0%, #090a0f 100%);
+    background-attachment: fixed;
+    color: var(--text-primary);
+    font-family: var(--font-family);
+    min-height: 100vh;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  #particleCanvas {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    z-index: 0; pointer-events: none;
+  }
+
+  body::after {
+    content: "";
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0, 243, 255, 0.02) 2px, rgba(0, 243, 255, 0.02) 4px);
+    pointer-events: none; z-index: 0;
+  }
+
+  #app {
+    position: relative; z-index: 1; max-width: 1300px; margin: 0 auto; padding: 25px;
+  }
+
+  /* 登录区域 */
+  #loginSection {
+    display: flex; justify-content: center; align-items: center; min-height: 100vh;
+  }
+
+  .login-box {
+    background: var(--panel-bg);
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    border-radius: 20px; padding: 40px 30px; width: 400px;
+    box-shadow: var(--border-glow), 0 20px 40px rgba(0,0,0,0.5);
+    text-align: center; animation: fadeInUp 0.6s ease;
+  }
+
+  .login-box h3 {
+    font-size: 1.8rem; letter-spacing: 4px;
+    color: var(--neon-blue); text-shadow: 0 0 10px var(--neon-blue), 0 0 30px var(--neon-blue);
+    margin-bottom: 30px; font-weight: 600;
+  }
+
+  .login-box input[type="email"],
+  .login-box input[type="password"],
+  .login-box input[type="text"] {
+    width: 100%; padding: 14px 16px; margin: 12px 0;
+    background: rgba(255,255,255,0.08); border: 1px solid var(--glass-border);
+    border-radius: 8px; color: white; font-size: 16px;
+    outline: none; transition: all 0.3s; font-family: var(--font-family);
+  }
+  .login-box input:focus {
+    border-color: var(--neon-blue);
+    box-shadow: 0 0 12px rgba(0, 243, 255, 0.5);
+    background: rgba(255,255,255,0.12);
+  }
+  .login-box input::placeholder { color: rgba(255,255,255,0.4); }
+
+  .password-wrapper { position: relative; margin: 12px 0; }
+  .password-wrapper input { padding-right: 45px !important; margin: 0; }
+  .password-toggle {
+    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; color: var(--text-secondary); font-size: 1.3rem;
+    cursor: pointer; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
+    transition: color 0.2s; padding: 0;
+  }
+  .password-toggle:hover { color: var(--neon-blue); }
+
+  .login-box button[type="button"] {
+    width: 100%; padding: 14px; margin-top: 20px;
+    background: transparent; border: 2px solid var(--neon-blue);
+    color: var(--neon-blue); font-size: 18px; font-weight: bold;
+    letter-spacing: 3px; border-radius: 8px; cursor: pointer;
+    transition: all 0.3s; text-transform: uppercase; position: relative; overflow: hidden;
+  }
+  .login-box button[type="button"]:hover {
+    background: var(--neon-blue); color: #0a0a0f;
+    box-shadow: 0 0 20px var(--neon-blue), 0 0 40px var(--neon-blue);
+  }
+  .login-box button[type="button"]::before {
+    content: ""; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+    background: linear-gradient(45deg, transparent, rgba(255,255,255,0.3), transparent);
+    transform: rotate(45deg); animation: btnShine 3s infinite;
+  }
+  @keyframes btnShine { 0% { left: -50%; } 100% { left: 150%; } }
+
+  .remember-row {
+    display: flex; align-items: center; margin-top: 15px; color: var(--text-secondary);
+    font-size: 0.9rem; gap: 8px;
+  }
+  .remember-row input[type="checkbox"] { accent-color: var(--neon-blue); }
+
+  #loginError { color: var(--danger); margin-top: 15px; font-size: 14px; text-shadow: 0 0 8px var(--danger); }
+
+  /* 数据面板 */
+  #dataSection { animation: fadeIn 0.5s ease; }
+
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+  }
+  .title {
+    font-size: 1.8rem;
+    color: var(--neon-blue);
+    text-shadow: 0 0 15px var(--neon-blue);
+    letter-spacing: 2px;
+    font-weight: 600;
+  }
+  .user-email-in-title {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin-left: 12px;
+    font-weight: normal;
+    letter-spacing: normal;
+    text-shadow: none;
+  }
+  .logout-btn, .admin-btn {
+    background: transparent; border: 2px solid var(--danger); color: var(--danger);
+    padding: 8px 18px; border-radius: 6px; font-size: 14px; cursor: pointer;
+    transition: all 0.3s; text-transform: uppercase; letter-spacing: 2px;
+  }
+  .logout-btn:hover { background: var(--danger); color: #fff; box-shadow: 0 0 20px var(--danger); }
+  .admin-btn { border-color: var(--neon-blue); color: var(--neon-blue); margin-right: 10px; }
+  .admin-btn:hover { background: var(--neon-blue); color: #0a0a0f; box-shadow: 0 0 20px var(--neon-blue); }
+
+  .controls { display: flex; align-items: center; margin-bottom: 20px; gap: 15px; }
+  .controls label { font-size: 1rem; color: var(--text-secondary); }
+  .controls select {
+    padding: 8px 15px; background: rgba(255,255,255,0.1);
+    border: 1px solid var(--glass-border); border-radius: 8px;
+    color: white; font-size: 1rem; outline: none; cursor: pointer; transition: 0.2s;
+  }
+  .controls select:hover { border-color: var(--neon-blue); }
+
+  .summary {
+    background: var(--glass); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
+    border: 1px solid var(--glass-border); border-radius: 12px;
+    padding: 16px 25px; margin-bottom: 20px; font-size: 1.05rem;
+    color: var(--text-secondary); box-shadow: var(--border-glow); line-height: 1.8;
+  }
+  .summary span.highlight { color: var(--neon-blue); font-weight: bold; text-shadow: 0 0 8px var(--neon-blue); }
+
+  /* 表格 */
+  .table-wrapper {
+    background: var(--panel-bg); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border); border-radius: 16px;
+    overflow-x: auto; box-shadow: var(--border-glow), 0 10px 30px rgba(0,0,0,0.6);
+  }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 1000px; }
+  th, td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 14px 8px; }
+  th {
+    background: rgba(0, 243, 255, 0.1); font-size: 15px; font-weight: 600;
+    color: var(--neon-blue); text-transform: uppercase; letter-spacing: 1px;
+    border-bottom: 2px solid var(--neon-blue); box-shadow: inset 0 -2px 0 rgba(0, 243, 255, 0.3); text-align: left;
+  }
+  td { border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 14px; color: var(--text-primary); transition: all 0.2s; }
+  tr:hover td { background: rgba(0, 243, 255, 0.08); box-shadow: 0 0 15px rgba(0, 243, 255, 0.15) inset; color: #fff; }
+
+  th:nth-child(1), td:nth-child(1) { width: 8%; }
+  th:nth-child(2), td:nth-child(2) { width: 12%; }
+  th:nth-child(3), td:nth-child(3) { width: 14%; }
+  th:nth-child(4), td:nth-child(4) { width: 10%; }
+  th:nth-child(5), td:nth-child(5) { width: 9%; }
+  th:nth-child(6), td:nth-child(6) { width: 6%; }
+  th:nth-child(7), td:nth-child(7) { width: 5%; }
+  th:nth-child(8), td:nth-child(8) { width: 5%; }
+  th:nth-child(9), td:nth-child(9) { width: 15%; }
+  th:nth-child(10), td:nth-child(10) { width: 16%; }
+
+  .error { color: var(--danger); margin-top: 15px; text-shadow: 0 0 8px var(--danger); }
+
+  /* 模态窗口 */
+  .modal-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.7); backdrop-filter: blur(5px);
+    z-index: 1000; display: flex; align-items: center; justify-content: center;
+  }
+  .modal {
+    background: var(--panel-bg); border: 1px solid var(--glass-border);
+    border-radius: 16px; padding: 30px; max-width: 500px; width: 90%;
+    box-shadow: var(--border-glow), 0 10px 30px rgba(0,0,0,0.6); animation: fadeIn 0.3s ease;
+  }
+  .modal h3 { color: var(--neon-blue); margin-bottom: 20px; }
+  .modal select, .modal input, .modal label {
+    width: 100%; padding: 10px; margin: 10px 0;
+    background: rgba(255,255,255,0.1); border: 1px solid var(--glass-border); border-radius: 6px; color: white;
+  }
+  .modal select {
+    background: #1e293b;
+    color: #ffffff;
+    cursor: pointer;
+  }
+  .modal select option {
+    background: #0f172a;
+    color: #e2e8f0;
+    padding: 8px;
+  }
+  .modal select option:hover {
+    background: var(--neon-blue);
+    color: #0a0a0f;
+  }
+  .modal button { margin: 10px 5px 0 0; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+  .btn-primary { background: var(--neon-blue); color: #0a0a0f; }
+  .btn-danger { background: var(--danger); color: white; }
+  .close-btn { background: transparent; color: var(--text-secondary); float: right; font-size: 1.5rem; cursor: pointer; }
+
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes fadeInUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+
+  @media (max-width: 600px) {
+    .login-box { width: 90%; padding: 30px 20px; }
+    .title { font-size: 1.5rem; }
+    .controls { flex-direction: column; align-items: flex-start; }
+  }
+</style>
+</head>
+<body>
+<canvas id="particleCanvas"></canvas>
+<div id="app"></div>
+<script>
+(function() {
+  // 粒子动画（保持不变）
+  const canvas = document.getElementById('particleCanvas');
+  const ctx = canvas.getContext('2d');
+  let particles = [];
+  const PARTICLE_COUNT = 150;
+  let centerX, centerY;
+
+  function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    centerX = canvas.width / 2;
+    centerY = canvas.height / 2;
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+
+  class Particle {
+    constructor() { this.reset(true); }
+    reset(initial = false) {
+      const angle = Math.random() * Math.PI * 2;
+      const distance = initial ? Math.random() * 50 : 10;
+      this.x = centerX + Math.cos(angle) * distance;
+      this.y = centerY + Math.sin(angle) * distance;
+      const speed = 0.5 + Math.random() * 1.5;
+      this.speedX = Math.cos(angle) * speed;
+      this.speedY = Math.sin(angle) * speed;
+      this.size = 0.5 + Math.random() * 2;
+      this.opacity = 0.4 + Math.random() * 0.6;
+      this.color = Math.random() > 0.5 ? 'rgba(0,243,255,' : 'rgba(255,255,255,';
+    }
+    update() {
+      this.x += this.speedX; this.y += this.speedY;
+      if (this.x < 0 || this.x > canvas.width || this.y < 0 || this.y > canvas.height) this.reset();
+    }
+    draw(ctx) {
+      ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI*2);
+      ctx.fillStyle = this.color + this.opacity + ')'; ctx.fill();
+    }
+  }
+  for (let i = 0; i < PARTICLE_COUNT; i++) particles.push(new Particle());
+  function animateParticles() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 100);
+    gradient.addColorStop(0, 'rgba(0, 243, 255, 0.05)'); gradient.addColorStop(1, 'rgba(0, 243, 255, 0)');
+    ctx.fillStyle = gradient; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    particles.forEach(p => { p.update(); p.draw(ctx); });
+    requestAnimationFrame(animateParticles);
+  }
+  animateParticles();
+
+  // ========== 业务配置 ==========
+  const SUPABASE_URL = "https://gbedtcwsnwteneiokizp.supabase.co";
+  const SUPABASE_ANON_KEY = "sb_publishable_6kqvIXFMeqXW-xmwh7GcHQ_LvfH2zon"; // 你的 publishable key
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const ADMIN_UUID = "4acada96-4262-404c-a7a8-f3bbf43ad067"; // 超级管理员 UUID
+
+  const T = {
+    loginTitle: '数据中心', emailPlaceholder: '邮箱', passwordPlaceholder: '密码',
+    loginBtn: '进入系统', logoutBtn: '退出登陆', summaryLoading: '加载中...',
+    summaryPrefix: '累计评论', noData: '暂无数据', loadErrorPrefix: '系统异常：',
+    tableHeaders: ['站点编码','站点简称','销售单号','油品名称','手机号','姓名','CTC','TTC','评价内容','提交时间'],
+    siteSummaryFail: '统计数据加载失败', siteSummaryNone: '无',
+    title: '站点数据中心欢迎您', monthLabel: '选择月份：', rememberMe: '记住密码',
+    adminBtn: '用户管理', batchBtn: '批量生成账号'
+  };
+
+  let allLogsCache = null, monthSelectListener = null;
+
+  // ========== UI 构建 ==========
+  function buildUI() {
+    const app = document.getElementById('app');
+    // 登录区
+    const loginSec = document.createElement('div');
+    loginSec.id = 'loginSection';
+    loginSec.innerHTML = `
+      <div class="login-box">
+        <h3>${T.loginTitle}</h3>
+        <input type="email" id="email" placeholder="${T.emailPlaceholder}" required>
+        <div class="password-wrapper">
+          <input type="password" id="password" placeholder="${T.passwordPlaceholder}" required>
+          <button class="password-toggle" id="togglePwd" type="button" title="显示密码">👁️</button>
+        </div>
+        <div class="remember-row">
+          <input type="checkbox" id="rememberMe"><label for="rememberMe">${T.rememberMe}</label>
+        </div>
+        <button type="button" id="loginBtn">${T.loginBtn}</button>
+        <p id="loginError" class="error"></p>
+      </div>
+    `;
+    app.appendChild(loginSec);
+
+    // 数据面板
+    const dataSec = document.createElement('div');
+    dataSec.id = 'dataSection';
+    dataSec.style.display = 'none';
+    dataSec.innerHTML = `
+      <div class="header">
+        <div class="title" id="pageTitle">${T.title}</div>
+        <div>
+          <button id="adminBtn" class="admin-btn" style="display:none;">${T.adminBtn}</button>
+          <button id="batchCreateBtn" class="admin-btn" style="display:none;">${T.batchBtn}</button>
+          <button id="logoutBtn" class="logout-btn">${T.logoutBtn}</button>
+        </div>
+      </div>
+      <div class="controls">
+        <label>${T.monthLabel}</label>
+        <select id="monthSelect"><option value="">加载中...</option></select>
+      </div>
+      <div class="summary" id="summary">${T.summaryLoading}</div>
+      <div class="table-wrapper">
+        <table>
+          <thead id="tableHead"></thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+      <p id="dataError" class="error"></p>
+    `;
+    app.appendChild(dataSec);
+
+    const thead = document.getElementById('tableHead');
+    const tr = document.createElement('tr');
+    T.tableHeaders.forEach(h => { const th = document.createElement('th'); th.textContent = h; tr.appendChild(th); });
+    thead.appendChild(tr);
+  }
+
+  // ========== 业务函数 ==========
+  function showLogin() {
+    document.getElementById('loginSection').style.display = 'flex';
+    document.getElementById('dataSection').style.display = 'none';
+    const saved = localStorage.getItem('supabase_saved_cred');
+    if (saved) {
+      try {
+        const cred = JSON.parse(saved);
+        document.getElementById('email').value = cred.email || '';
+        document.getElementById('password').value = cred.password || '';
+        document.getElementById('rememberMe').checked = true;
+      } catch(e) {}
+    }
+  }
+
+  async function showData() {
+    document.getElementById('loginSection').style.display = 'none';
+    document.getElementById('dataSection').style.display = 'block';
+    allLogsCache = null;
+    await loadAvailableMonths();
+    await loadCurrentMonthData();
+    checkAdmin();
+    // 显示当前登录账号在标题旁
+    await updateTitleWithUser();
+  }
+
+  async function updateTitleWithUser() {
+    const { data: { user } } = await supabase.auth.getUser();
+    const titleEl = document.getElementById('pageTitle');
+    if (titleEl && user) {
+      // 保留原标题，后面加上邮箱
+      titleEl.innerHTML = `${T.title} <span class="user-email-in-title">(${user.email})</span>`;
+    } else if (titleEl) {
+      titleEl.innerHTML = T.title;
+    }
+  }
+
+  async function login() {
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const errEl = document.getElementById('loginError');
+    errEl.textContent = '';
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) { errEl.textContent = T.loadErrorPrefix + error.message; return; }
+    if (document.getElementById('rememberMe').checked) {
+      localStorage.setItem('supabase_saved_cred', JSON.stringify({ email, password }));
+    } else {
+      localStorage.removeItem('supabase_saved_cred');
+    }
+    showData();
+  }
+
+  async function logout() { await supabase.auth.signOut(); showLogin(); allLogsCache = null; }
+
+  async function fetchAllLogs() {
+    if (allLogsCache) return allLogsCache;
+    const { data, error } = await supabase.from('request_logs').select('created_at, request_body').order('created_at', { ascending: false });
+    if (error) { console.error(error); return []; }
+    allLogsCache = data || [];
+    return allLogsCache;
+  }
+
+  async function loadAvailableMonths() {
+    const logs = await fetchAllLogs();
+    const months = new Set();
+    logs.forEach(l => { if (l.created_at) months.add(l.created_at.substring(0,7)); });
+    const sorted = Array.from(months).sort().reverse();
+    const select = document.getElementById('monthSelect');
+    if (monthSelectListener) select.removeEventListener('change', monthSelectListener);
+    select.innerHTML = sorted.map(m => `<option value="${m}">${m}</option>`).join('');
+    if (sorted.length > 0) { select.value = sorted[0]; updateSummaryAndTable(sorted[0]); }
+    else document.getElementById('summary').textContent = T.siteSummaryNone;
+    monthSelectListener = function() { updateSummaryAndTable(this.value); };
+    select.addEventListener('change', monthSelectListener);
+  }
+
+  function updateSummaryAndTable(month) { renderSummary(month); renderTable(month); }
+
+  function renderSummary(month) {
+    const logs = allLogsCache || [];
+    const counts = {};
+    logs.forEach(l => {
+      if (!l.created_at || l.created_at.substring(0,7) !== month) return;
+      const code = l.request_body?.stncode; if (code) counts[code] = (counts[code]||0)+1;
+    });
+    const items = Object.entries(counts).map(([c, n]) => `<span class="highlight">${c}</span>: ${n} 次`).join(' | ');
+    document.getElementById('summary').innerHTML = `${T.summaryPrefix} (${month})：${items || T.siteSummaryNone}`;
+  }
+
+  function renderTable(month) {
+    const filtered = (allLogsCache||[]).filter(l => l.created_at && l.created_at.substring(0,7) === month);
+    const tbody = document.getElementById('tableBody'); tbody.innerHTML = '';
+    if (filtered.length === 0) { tbody.innerHTML = `<tr><td colspan="10">${T.noData}</td></tr>`; return; }
+    filtered.forEach(row => {
+      const body = row.request_body;
+      const tr = document.createElement('tr');
+      const vals = [body.stncode, body.shortname, body.saleno, body.gname, body.mobilephone, body.name, body.ctc, body.ttc,
+        (body.questiondata?.length ? body.questiondata[body.questiondata.length-1].answercontent : ''), row.created_at];
+      vals.forEach(v => { const td = document.createElement('td'); td.textContent = v||''; if (v && v.length>15) td.title=v; tr.appendChild(td); });
+      tbody.appendChild(tr);
+    });
+  }
+
+  async function loadCurrentMonthData() {
+    await fetchAllLogs();
+    const select = document.getElementById('monthSelect');
+    if (select.value) updateSummaryAndTable(select.value);
+    else document.getElementById('summary').textContent = T.siteSummaryNone;
+  }
+
+  function togglePasswordVisibility() {
+    const pwd = document.getElementById('password');
+    const btn = document.getElementById('togglePwd');
+    if (pwd.type === 'password') { pwd.type = 'text'; btn.innerHTML = '🙈'; }
+    else { pwd.type = 'password'; btn.innerHTML = '👁️'; }
+  }
+
+  // ========== 超级管理员功能 ==========
+  async function checkAdmin() {
+    const { data: { user } } = await supabase.auth.getUser();
+    const adminBtn = document.getElementById('adminBtn');
+    const batchBtn = document.getElementById('batchCreateBtn');
+    if (user && user.id === ADMIN_UUID) {
+      adminBtn.style.display = 'inline-block';
+      batchBtn.style.display = 'inline-block';
+    } else {
+      adminBtn.style.display = 'none';
+      batchBtn.style.display = 'none';
+    }
+  }
+
+  async function showAdminPanel() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      alert('请先登录');
+      return;
+    }
+
+    let users = [];
+    try {
+      const { data, error } = await supabase.functions.invoke('list-users', { method: 'POST' });
+      if (error) throw new Error(error.message);
+      users = data.users || [];
+      if (users.length === 0) {
+        alert('暂无其他用户');
+        return;
+      }
+    } catch (err) {
+      alert('获取用户列表失败：' + err.message);
+      return;
+    }
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal">
+        <span class="close-btn" id="closeAdminPanel">&times;</span>
+        <h3>用户密码重置</h3>
+        <label>选择用户：</label>
+        <select id="userSelect">
+          <option value="">-- 请选择 --</option>
+          ${users.map(u => `<option value="${u.id}">${u.email} (${u.id.substring(0,8)}...)</option>`).join('')}
+        </select>
+        <label>新密码：</label>
+        <input type="password" id="newPassword" placeholder="至少6位">
+        <button class="btn-primary" id="doReset">重置密码</button>
+        <button class="btn-danger" id="cancelReset">取消</button>
+        <p id="resetMsg" class="error"></p>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    document.getElementById('closeAdminPanel').onclick = () => overlay.remove();
+    document.getElementById('cancelReset').onclick = () => overlay.remove();
+    document.getElementById('doReset').onclick = async () => {
+      const targetUserId = document.getElementById('userSelect').value;
+      const newPassword = document.getElementById('newPassword').value;
+      const msgEl = document.getElementById('resetMsg');
+      if (!targetUserId || !newPassword || newPassword.length < 6) {
+        msgEl.textContent = '请选择用户并输入至少6位密码';
+        return;
+      }
+      try {
+        const { data, error } = await supabase.functions.invoke('reset-user-password', {
+          method: 'POST',
+          body: { userId: targetUserId, newPassword }
+        });
+        if (error) throw new Error(error.message);
+        if (data && data.success) {
+          msgEl.style.color = 'var(--success)';
+          msgEl.textContent = '密码重置成功！';
+          document.getElementById('newPassword').value = '';
+        } else {
+          throw new Error(data?.error || '未知错误');
+        }
+      } catch (err) {
+        msgEl.style.color = 'var(--danger)';
+        msgEl.textContent = '重置失败：' + err.message;
+      }
+    };
+  }
+
+  // 批量生成账号
+  async function batchCreateAccounts() {
+    try {
+      const btn = document.getElementById('batchCreateBtn');
+      const originalText = btn.innerText;
+      btn.innerText = '生成中...';
+      btn.disabled = true;
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('未登录');
+
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/batch-create-accounts`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(errText);
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'accounts.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      alert('批量生成完成，CSV 文件已下载。');
+    } catch (err) {
+      console.error('批量生成失败:', err);
+      alert('批量生成失败：' + err.message);
+    } finally {
+      const btn = document.getElementById('batchCreateBtn');
+      btn.innerText = T.batchBtn;
+      btn.disabled = false;
+    }
+  }
+
+  // ========== 初始化 ==========
+  buildUI();
+  document.getElementById('loginBtn').addEventListener('click', login);
+  document.getElementById('logoutBtn').addEventListener('click', logout);
+  document.getElementById('togglePwd').addEventListener('click', togglePasswordVisibility);
+  document.getElementById('adminBtn').addEventListener('click', showAdminPanel);
+  document.getElementById('batchCreateBtn').addEventListener('click', batchCreateAccounts);
+
+  (async function init() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) await showData();
+    else showLogin();
+  })();
+})();
+</script>
+</body>
+</html>
